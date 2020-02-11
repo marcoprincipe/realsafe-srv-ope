@@ -69,6 +69,8 @@
   			<groupId>br.com.volans.realsafe</groupId>
   			<artifactId>realsafe-drivers</artifactId>
 		    <version>1.0.0</version>
+			<scope>system</scope>
+			<systemPath>file://C:/Temp/realsafe-drivers-1.0.0.jar</systemPath>
 		</dependency>
 				
 	</dependencies>
