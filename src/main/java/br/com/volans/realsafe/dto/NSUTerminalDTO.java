@@ -24,6 +24,7 @@ public class NSUTerminalDTO implements Serializable {
 
 	private String terminalId;
 	private BigDecimal nsuTerminal;
+	private BigDecimal nsuEvent;
 	private Date currentDateTime;
 	
 	/**
@@ -39,12 +40,14 @@ public class NSUTerminalDTO implements Serializable {
 	 * 
 	 * @param terminalId
 	 * @param nsuTerminal
+	 * @param nsuEvent
 	 * @param currentDateTime
 	 */
 	
-	public NSUTerminalDTO(String terminalId, BigDecimal nsuTerminal, Date currentDateTime) {
+	public NSUTerminalDTO(String terminalId, BigDecimal nsuTerminal, BigDecimal nsuEvent, Date currentDateTime) {
 		this.terminalId = terminalId;
 		this.nsuTerminal = nsuTerminal;
+		this.nsuEvent = nsuEvent;
 		this.currentDateTime = currentDateTime;
 	}
 
@@ -77,6 +80,20 @@ public class NSUTerminalDTO implements Serializable {
 	}
 
 	/**
+	 * @return the nsuEvent
+	 */
+	public BigDecimal getNsuEvent() {
+		return nsuEvent;
+	}
+
+	/**
+	 * @param nsuEvent the nsuEvent to set
+	 */
+	public void setNsuEvent(BigDecimal nsuEvent) {
+		this.nsuEvent = nsuEvent;
+	}
+
+	/**
 	 * @return the currentDateTime
 	 */
 	public Date getCurrentDateTime() {
@@ -99,6 +116,8 @@ public class NSUTerminalDTO implements Serializable {
 		builder.append(terminalId);
 		builder.append(", nsuTerminal=");
 		builder.append(nsuTerminal);
+		builder.append(", nsuEvent=");
+		builder.append(nsuEvent);
 		builder.append(", currentDateTime=");
 		builder.append(currentDateTime);
 		builder.append("]");

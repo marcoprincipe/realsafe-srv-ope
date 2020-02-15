@@ -28,8 +28,9 @@ public enum MessageKeys {
 	INVALID_GROUP_OWNER_CODE("invalid.group.owner.code", "Código do proprietário de grupos informado inválido"),
 	NO_GROUP_OWNER_FOUND("no.group.owner.found", "Proprietário de grupos não encontrado"),
 	
-	// Mensagnes do status de terminal.
+	// Mensagens do terminal local 
 
+	LOCAL_TERMINAL_NOT_FOUND("local.terminal.not.found", "Terminal local não encontrado"),
 	LOCAL_TERMINAL_STATUS_NOT_FOUND("local.terminal.status.not.found", "Status do terminal não encontrado na base local"),
 	
 	// Mensagens do serviço de grupos.
@@ -132,7 +133,15 @@ public enum MessageKeys {
 	// Mensagens do serviço de parâmetros
 	
 	PARAMETER_CODE_NOT_INFORMED("parameter.code.not.informed", "Código do parâmetro não informado"),
-	PARAMETER_NOT_FOUND("parameter.not.found", "Parâmetro '%s' não encontrado");
+	PARAMETER_NOT_FOUND("parameter.not.found", "Parâmetro '%s' não encontrado"),
+	
+	// Mensagens do serviço de log de eventos
+
+	NSU_EVENT_NOT_INFORMED("nsu.event.not.informed", "NSU do evento não informado"),
+	EVENT_CODE_NOT_INFORMED("event.code.not.informed", "Código do evento não informado"),
+	INVALID_EVENT_CODE("invalid.event.code", "Código do evento informado inválido"),
+	EVENT_NAME_NOT_INFORMED("event.name.not.informed", "Nome do evento não informado"),
+	EVENT_DATE_TIME_NOT_INFORMED("event.date.time.not.informed", "Data e hora do evento não informado");
 
 	/**
 	 * Declaração das variáveis membro

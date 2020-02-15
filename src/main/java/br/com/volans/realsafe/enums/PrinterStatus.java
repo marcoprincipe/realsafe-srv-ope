@@ -12,10 +12,16 @@ public enum PrinterStatus {
 	 * Declaração dos status disponíveis.
 	 */
 	
-	ON_LINE (0, "printer.is.online"),
-	OFF_LINE (-1, "printer.is.offline"),
-	BUSY (-2, "printer.is.busy"),
-	JAM(-3, "printer.jam");
+	PRINTER_OK (0, "printer.ok"),
+	PRINTER_LOW_PAPER (101, "printer.low.paper"),
+	PRINTER_OUT_OF_PAPER (102, "printer.out.of.paper"),
+	PRINTER_OFF_LINE (103, "printer.off.line"),
+	PRINTER_TURNED_OFF (104, "printer.turned.off"),
+	PRINTER_BUSY (105, "printer.busy"),
+	PRINTER_DISCONNECTED_CABLE (106, "printer.disconnected.cable"),
+	PRINTER_PRESENTER_ERROR (107, "printer.presenter.error"),
+	PRINTER_INVALID_BMP_FILE (108, "printer.invalid.bmp.file"),
+	PRINTER_PAPER_JAM(109, "printer.paper.jam");
 
 	/**
 	 * Declaração das variáveis membro.

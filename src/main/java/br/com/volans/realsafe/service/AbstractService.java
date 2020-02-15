@@ -1,14 +1,14 @@
 package br.com.volans.realsafe.service;
 
-import java.math.BigDecimal;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.MessageSource;
 
 import br.com.volans.realsafe.dao.NSUTerminalDAO;
+import br.com.volans.realsafe.dto.EventLogDTO;
 import br.com.volans.realsafe.dto.NSUTerminalDTO;
+import br.com.volans.realsafe.dto.TerminalDTO;
+import br.com.volans.realsafe.enums.MessageKeys;
 import br.com.volans.realsafe.exception.ServiceLayerException;
-import br.com.volans.realsafe.model.NSUTerminal;
 
 /**
  * Classe base para implementação dos demais serviços da aplicação.
@@ -23,7 +23,13 @@ public abstract class AbstractService {
 	 */
 
 	@Autowired
+	private TerminalService terminalService;
+	
+	@Autowired
 	private NSUTerminalDAO nsuTerminalDAO;
+	
+	@Autowired
+	private EventLogService eventLogService;
 	
 	@Autowired
 	private MessageSource messageSource;
@@ -50,19 +56,59 @@ public abstract class AbstractService {
 	 * @throws ServiceLayerException - Exceção da camada de negócio.
 	 */
 	
-	protected NSUTerminalDTO getNextNSU(String terminalId) throws ServiceLayerException {
+	protected NSUTerminalDTO getNextNSUTerminal(String terminalId) throws ServiceLayerException {
 		
-		NSUTerminalDTO result = null;
-		NSUTerminalDTO nsuTerminalDTO = nsuTerminalDAO.select(terminalId);
+		nsuTerminalDAO.incNSUTerminal(terminalId);
 		
-		NSUTerminal nsuTerminal = new NSUTerminal();
+		NSUTerminalDTO result = nsuTerminalDAO.select(terminalId);
 		
-		nsuTerminal.setTerminalId(nsuTerminalDTO.getTerminalId());
-		nsuTerminal.setNsuTerminal(nsuTerminalDTO.getNsuTerminal().add(BigDecimal.ONE));
+		return result;
 		
-		nsuTerminalDAO.update(nsuTerminal);
+	}
+	
+	/**
+	 * Retorna o próximo NSU de evento a ser utilizado.
+	 * 
+	 * @param terminalId - Identificador do terminal.
+	 * 
+	 * @return - Dados do novo NSU.
+	 * 
+	 * @throws ServiceLayerException - Exceção da camada de negócio.
+	 */
+	
+	protected NSUTerminalDTO getNextNSUEvent(String terminalId) throws ServiceLayerException {
 		
-		result = nsuTerminalDAO.select(terminalId);
+		nsuTerminalDAO.incNSUEvent(terminalId);
+		
+		NSUTerminalDTO result = nsuTerminalDAO.select(terminalId);
+		
+		return result;
+		
+	}
+	
+	/**
+	 * Efetua a gravação do evento de log.
+	 * 
+	 * @param eventLogDTO - DTO com os dados a serem gravados.
+	 * 
+	 * @throws ServiceLayerException - Exceção da camada de negócio.
+	 */
+	
+	protected EventLogDTO createEventLog(EventLogDTO eventLogDTO) throws ServiceLayerException {
+		
+		if (eventLogDTO.getTerminalId() == null || eventLogDTO.getTerminalId().trim().isEmpty()) {
+			
+			TerminalDTO terminalDTO = terminalService.getLocalTerminal();
+			
+			if (terminalDTO == null) {
+				throw new ServiceLayerException(getMessage(MessageKeys.LOCAL_TERMINAL_NOT_FOUND.getKey()));
+			}
+			
+			eventLogDTO.setTerminalId(terminalDTO.getTerminalId());
+			
+		}
+		
+		EventLogDTO result = eventLogService.create(eventLogDTO);
 		
 		return result;
 		

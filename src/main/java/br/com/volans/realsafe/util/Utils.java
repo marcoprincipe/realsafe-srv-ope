@@ -4,6 +4,9 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 /**
  * Classe com métodos úteis da aplicação.
  * 
@@ -60,6 +63,35 @@ public class Utils {
 	public static LocalDateTime getNowFromUTC() {
 		
 		return ZonedDateTime.now(ZoneOffset.UTC).toLocalDateTime();
+		
+	}
+	
+	/**
+	 * Converte o objeto informado para uma string JSON.
+	 * 
+	 * @param object - Objeto a ser convertido.
+	 * 
+	 * @return - String no formato JSON.
+	 */
+	
+	public static String objectToJson(Object object) {
+		
+		String json = null;
+
+		try {
+			
+			ObjectMapper mapper = new ObjectMapper();
+
+			json = mapper.writeValueAsString(object);
+			
+		} 
+		catch (JsonProcessingException ex) {
+			
+			json = "";
+			
+		}
+		
+		return json;
 		
 	}
 	

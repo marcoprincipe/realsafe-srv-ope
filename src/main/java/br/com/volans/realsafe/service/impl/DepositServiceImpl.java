@@ -21,11 +21,13 @@ import br.com.volans.realsafe.dao.DepositDetailDAO;
 import br.com.volans.realsafe.dao.TerminalStatusDAO;
 import br.com.volans.realsafe.dao.TransactionLogDAO;
 import br.com.volans.realsafe.driver.depository.dto.BankNoteDTO;
+import br.com.volans.realsafe.dto.EventLogDTO;
 import br.com.volans.realsafe.dto.NSUTerminalDTO;
 import br.com.volans.realsafe.dto.TerminalStatusDTO;
 import br.com.volans.realsafe.dto.payload.DepositRequest;
 import br.com.volans.realsafe.dto.payload.DepositResponse;
 import br.com.volans.realsafe.dto.payload.PrintDepositReceiptRequest;
+import br.com.volans.realsafe.enums.EventLogs;
 import br.com.volans.realsafe.enums.MessageKeys;
 import br.com.volans.realsafe.enums.Transactions;
 import br.com.volans.realsafe.exception.ServiceLayerException;
@@ -36,6 +38,7 @@ import br.com.volans.realsafe.model.TransactionLog;
 import br.com.volans.realsafe.service.AbstractService;
 import br.com.volans.realsafe.service.DepositService;
 import br.com.volans.realsafe.service.PrinterService;
+import br.com.volans.realsafe.util.Utils;
 
 /**
  * Implementação da interface dos serviços de logs de transações de depósito.
@@ -96,97 +99,136 @@ public class DepositServiceImpl extends AbstractService implements DepositServic
 	@Transactional
 	public DepositResponse deposit(DepositRequest request) throws ServiceLayerException {
 
-		// Verifica os dados informados.
+		DepositResponse result = null;
 		
-		if (request.getTerminalId() == null || request.getTerminalId().trim().isEmpty()) {
-			throw new ServiceLayerException(getMessage(MessageKeys.TERMINAL_CODE_NOT_INFORMED.getKey()));
+		try {
+		
+			// Verifica os dados informados.
+			
+			if (request.getTerminalId() == null || request.getTerminalId().trim().isEmpty()) {
+				throw new ServiceLayerException(getMessage(MessageKeys.TERMINAL_CODE_NOT_INFORMED.getKey()));
+			}
+			
+			// Obtem os dados do status do terminal.
+			
+			TerminalStatusDTO terminalStatusDTO = terminalStatusDAO.findByTerminalId(request.getTerminalId());
+			
+			if (terminalStatusDTO == null) {
+				throw new ServiceLayerException(getMessage(MessageKeys.TERMINAL_STATUS_NOT_FOUND.getKey()));
+			}
+			
+			// Obtem o próximo NSU.
+	
+			NSUTerminalDTO nsuTerminal = getNextNSUTerminal(request.getTerminalId());
+			String nsu = String.format("%s%07d", request.getTerminalId(), nsuTerminal.getNsuTerminal().longValue());
+	
+			// Sumariza o total de cédulas.
+			
+			List<BankNoteDTO> bankNotes = request.getBankNotes();
+			
+			Integer totalBankNotes = 0;
+	
+			for (BankNoteDTO bankNote : bankNotes) {
+				totalBankNotes += bankNote.getQuantity();
+			}
+			
+			// Efetua a gravação os dados da tabela de transações.
+			
+			TransactionLog transactionLog = new TransactionLog();
+			
+			transactionLog.setNsuTerminal(nsu);
+			transactionLog.setGroupOwnerId(request.getGroupOwnerId());
+			transactionLog.setUnitId(request.getUnitId());
+			transactionLog.setUserId(request.getUserId());
+			transactionLog.setTerminalId(request.getTerminalId());
+			transactionLog.setAccountingDate(terminalStatusDTO.getAccountingDate());
+			transactionLog.setDateTime(nsuTerminal.getCurrentDateTime());
+			transactionLog.setFunctionalityId(Transactions.DEPOSIT.getCode());
+			transactionLog.setBankNotes(totalBankNotes);
+			transactionLog.setAmount(request.getAmount());
+			
+			transactionLogDAO.insert(transactionLog);
+	
+			// Efetua a gravação dos dados do detalhe do depósito.
+			
+			bankNotes = request.getBankNotes();
+			
+			Integer includeOrder = 0;
+			Integer quantity = 0;
+			BigDecimal amount = BigDecimal.ZERO;
+			
+			for (BankNoteDTO bankNote : bankNotes) {
+				
+				DepositDetail depositDetail = new DepositDetail();
+				
+				depositDetail.setPk(new DepositDetailPK());
+				depositDetail.getPk().setNsuTerminal(nsu);
+				depositDetail.getPk().setIncludeOrder(++includeOrder);
+				depositDetail.setQuantity(bankNote.getQuantity());
+				depositDetail.setAmount(bankNote.getValue());
+				
+				depositDetailDAO.insert(depositDetail);
+				
+				amount = amount.add(bankNote.getTotal());
+				quantity += bankNote.getQuantity();
+				
+			}
+			
+			// Atualiza os dados do status do terminal.
+			
+			terminalStatusDTO.setBanknotesInSafe(terminalStatusDTO.getBanknotesInSafe() + quantity);
+			terminalStatusDTO.setAmountInSafe(terminalStatusDTO.getAmountInSafe().add(amount));
+			
+			TerminalStatus terminalStatus = new TerminalStatus();
+			
+			BeanUtils.copyProperties(terminalStatusDTO, terminalStatus);
+			
+			terminalStatusDAO.update(terminalStatus);
+			
+			// Cria o objeto com a resposta do depósito.
+			
+			result = new DepositResponse();
+			
+			result.setTerminalId(request.getTerminalId());
+			result.setNsuTerminal(nsu);
+			result.setDateTime(nsuTerminal.getCurrentDateTime());
+			result.setBankNotes(request.getBankNotes());
+			result.setAmount(request.getAmount());
+			
+			// Efetua a gravação do log de eventos.
+			
+			EventLogDTO eventLogDTO = new EventLogDTO();
+			eventLogDTO.setTerminalId(request.getTerminalId());
+			eventLogDTO.setUserId(request.getUserId());
+			eventLogDTO.setEventId(EventLogs.EVENT_DEPOSIT.getCode());
+			eventLogDTO.setEventName(getMessage(EventLogs.EVENT_DEPOSIT.getKey()));
+			eventLogDTO.setNsuTransaction(nsu);
+			eventLogDTO.setExtraData(Utils.objectToJson(request));
+			eventLogDTO.setMessage(getMessage(MessageKeys.SUCCESS.getKey()));
+			eventLogDTO.setResultCode(0L);
+			
+			createEventLog(eventLogDTO);
+			
+			
 		}
-		
-		// Obtem os dados do status do terminal.
-		
-		TerminalStatusDTO terminalStatusDTO = terminalStatusDAO.findByTerminalId(request.getTerminalId());
-		
-		if (terminalStatusDTO == null) {
-			throw new ServiceLayerException(getMessage(MessageKeys.TERMINAL_STATUS_NOT_FOUND.getKey()));
-		}
-		
-		// Obtem o próximo NSU.
-
-		NSUTerminalDTO nsuTerminal = getNextNSU(request.getTerminalId());
-		String nsu = String.format("%s%07d", request.getTerminalId(), nsuTerminal.getNsuTerminal().longValue());
-
-		// Sumariza o total de cédulas.
-		
-		List<BankNoteDTO> bankNotes = request.getBankNotes();
-		
-		Integer totalBankNotes = 0;
-
-		for (BankNoteDTO bankNote : bankNotes) {
-			totalBankNotes += bankNote.getQuantity();
-		}
-		
-		// Efetua a gravação os dados da tabela de transações.
-		
-		TransactionLog transactionLog = new TransactionLog();
-		
-		transactionLog.setNsuTerminal(nsu);
-		transactionLog.setGroupOwnerId(request.getGroupOwnerId());
-		transactionLog.setUnitId(request.getUnitId());
-		transactionLog.setUserId(request.getUserId());
-		transactionLog.setTerminalId(request.getTerminalId());
-		transactionLog.setAccountingDate(terminalStatusDTO.getAccountingDate());
-		transactionLog.setDateTime(nsuTerminal.getCurrentDateTime());
-		transactionLog.setFunctionalityId(Transactions.DEPOSIT.getCode());
-		transactionLog.setBankNotes(totalBankNotes);
-		transactionLog.setAmount(request.getAmount());
-		
-		transactionLogDAO.insert(transactionLog);
-
-		// Efetua a gravação dos dados do detalhe do depósito.
-		
-		bankNotes = request.getBankNotes();
-		
-		Integer includeOrder = 0;
-		Integer quantity = 0;
-		BigDecimal amount = BigDecimal.ZERO;
-		
-		for (BankNoteDTO bankNote : bankNotes) {
+		catch (ServiceLayerException ex) {
 			
-			DepositDetail depositDetail = new DepositDetail();
+			// Efetua a gravação do log de eventos.
 			
-			depositDetail.setPk(new DepositDetailPK());
-			depositDetail.getPk().setNsuTerminal(nsu);
-			depositDetail.getPk().setIncludeOrder(++includeOrder);
-			depositDetail.setQuantity(bankNote.getQuantity());
-			depositDetail.setAmount(bankNote.getValue());
+			EventLogDTO eventLogDTO = new EventLogDTO();
+			eventLogDTO.setTerminalId(request.getTerminalId());
+			eventLogDTO.setUserId(request.getUserId());
+			eventLogDTO.setEventId(EventLogs.EVENT_DEPOSIT.getCode());
+			eventLogDTO.setEventName(getMessage(EventLogs.EVENT_DEPOSIT.getKey()));
+			eventLogDTO.setExtraData(Utils.objectToJson(request));
+			eventLogDTO.setMessage(ex.getMessage());
+			eventLogDTO.setResultCode(ex.getCode());
 			
-			depositDetailDAO.insert(depositDetail);
+			createEventLog(eventLogDTO);
 			
-			amount = amount.add(bankNote.getTotal());
-			quantity += bankNote.getQuantity();
+			throw ex;
 			
 		}
-		
-		// Atualiza os dados do status do terminal.
-		
-		terminalStatusDTO.setBanknotesInSafe(terminalStatusDTO.getBanknotesInSafe() + quantity);
-		terminalStatusDTO.setAmountInSafe(terminalStatusDTO.getAmountInSafe().add(amount));
-		
-		TerminalStatus terminalStatus = new TerminalStatus();
-		
-		BeanUtils.copyProperties(terminalStatusDTO, terminalStatus);
-		
-		terminalStatusDAO.update(terminalStatus);
-		
-		// Cria o objeto com a resposta do depósito.
-		
-		DepositResponse result = new DepositResponse();
-		
-		result.setTerminalId(request.getTerminalId());
-		result.setNsuTerminal(nsu);
-		result.setDateTime(nsuTerminal.getCurrentDateTime());
-		result.setBankNotes(request.getBankNotes());
-		result.setAmount(request.getAmount());
 		
 		return result;
 		

@@ -1,5 +1,7 @@
 package br.com.volans.realsafe.dao.impl;
 
+import java.math.BigDecimal;
+
 import javax.persistence.EntityManager;
 import javax.persistence.NoResultException;
 import javax.persistence.PersistenceContext;
@@ -24,6 +26,12 @@ import br.com.volans.realsafe.model.NSUTerminal_;
 
 @Repository
 public class NSUTerminalDAOImpl implements NSUTerminalDAO {
+	
+	/**
+	 * Declaração as constantes da classe.
+	 */
+	
+	private static final BigDecimal MAX_NSU_VALUE = BigDecimal.valueOf(9999999);
 	
 	/**
 	 * Declaração das variáveis membro
@@ -63,6 +71,7 @@ public class NSUTerminalDAOImpl implements NSUTerminalDAO {
 			cq.multiselect(
 				nsuTerminal.get(NSUTerminal_.terminalId),
 				nsuTerminal.get(NSUTerminal_.nsuTerminal),
+				nsuTerminal.get(NSUTerminal_.nsuEvent),
 				cb.currentTimestamp()
 			);
 			
@@ -104,8 +113,11 @@ public class NSUTerminalDAOImpl implements NSUTerminalDAO {
 			Root<NSUTerminal> root = update.from(NSUTerminal.class);
 			
 			update.set(NSUTerminal_.nsuTerminal, nsuTerminal.getNsuTerminal());
+			update.set(NSUTerminal_.nsuEvent, nsuTerminal.getNsuEvent());
 			
-			update.where(cb.equal(root.get(NSUTerminal_.terminalId), nsuTerminal.getTerminalId()));
+			update.where(
+				cb.equal(root.get(NSUTerminal_.terminalId), nsuTerminal.getTerminalId())
+			);
 			
 			rowsAffected = entityManager.createQuery(update).executeUpdate();
 			
@@ -116,6 +128,86 @@ public class NSUTerminalDAOImpl implements NSUTerminalDAO {
 		
 		return rowsAffected;
 		
+	}
+	
+	/**
+	 * Incrementa o NSU de operações do terminal informado.
+	 * 
+	 * terminalId - Identificador do terminal.
+	 * 
+	 * @return - Quantidade de linhas atualizadas.
+	 */
+	
+	@Override
+	public Integer incNSUTerminal(String terminalId) {
+		
+		Integer rowsAffected = 0; 
+				
+		try {
+			
+			CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+			CriteriaUpdate<NSUTerminal> update = cb.createCriteriaUpdate(NSUTerminal.class);
+			
+			Root<NSUTerminal> root = update.from(NSUTerminal.class);
+			
+			update.set(NSUTerminal_.nsuTerminal, cb.<BigDecimal>selectCase()
+				.when(cb.equal(root.get(NSUTerminal_.nsuTerminal), MAX_NSU_VALUE), BigDecimal.ONE)
+				.otherwise(cb.sum(root.get(NSUTerminal_.nsuTerminal), BigDecimal.ONE))
+			);
+			
+			update.where(
+				cb.equal(root.get(NSUTerminal_.terminalId), terminalId)
+			);
+			
+			rowsAffected = entityManager.createQuery(update).executeUpdate();
+			
+		}
+		catch (NoResultException ex) {
+			// Nothing to do
+		}
+		
+		return rowsAffected;
+
+	}
+	
+	/**
+	 * Incrementa o NSU de eventos do terminal informado.
+	 * 
+	 * terminalId - Identificador do terminal.
+	 * 
+	 * @return - Quantidade de linhas atualizadas.
+	 */
+	
+	@Override
+	public Integer incNSUEvent(String terminalId) {
+		
+		Integer rowsAffected = 0; 
+				
+		try {
+			
+			CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+			CriteriaUpdate<NSUTerminal> update = cb.createCriteriaUpdate(NSUTerminal.class);
+			
+			Root<NSUTerminal> root = update.from(NSUTerminal.class);
+			
+			update.set(NSUTerminal_.nsuEvent, cb.<BigDecimal>selectCase()
+				.when(cb.equal(root.get(NSUTerminal_.nsuEvent), MAX_NSU_VALUE), BigDecimal.ONE)
+				.otherwise(cb.sum(root.get(NSUTerminal_.nsuEvent), BigDecimal.ONE))
+			);
+			
+			update.where(
+				cb.equal(root.get(NSUTerminal_.terminalId), terminalId)
+			);
+			
+			rowsAffected = entityManager.createQuery(update).executeUpdate();
+			
+		}
+		catch (NoResultException ex) {
+			// Nothing to do
+		}
+		
+		return rowsAffected;
+
 	}
 
 }

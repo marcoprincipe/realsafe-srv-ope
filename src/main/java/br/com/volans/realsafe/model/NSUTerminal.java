@@ -35,6 +35,9 @@ public class NSUTerminal implements Serializable {
 	@Column(name = "nsu_terminal")
 	private BigDecimal nsuTerminal;
 
+	@Column(name = "nsu_event")
+	private BigDecimal nsuEvent;
+
 	/**
 	 * @return the terminalId
 	 */
@@ -63,6 +66,20 @@ public class NSUTerminal implements Serializable {
 		this.nsuTerminal = nsuTerminal;
 	}
 
+	/**
+	 * @return the nsuEvent
+	 */
+	public BigDecimal getNsuEvent() {
+		return nsuEvent;
+	}
+
+	/**
+	 * @param nsuEvent the nsuEvent to set
+	 */
+	public void setNsuEvent(BigDecimal nsuEvent) {
+		this.nsuEvent = nsuEvent;
+	}
+
 	@Override
 	public String toString() {
 
@@ -72,6 +89,8 @@ public class NSUTerminal implements Serializable {
 		builder.append(terminalId);
 		builder.append(", nsuTerminal=");
 		builder.append(nsuTerminal);
+		builder.append(", nsuEvent=");
+		builder.append(nsuEvent);
 		builder.append("]");
 		
 		return builder.toString();

@@ -30,5 +30,25 @@ public interface NSUTerminalDAO {
 	 */
 	
 	Integer update(NSUTerminal nsuTerminal);
+	
+	/**
+	 * Incrementa o NSU de operações do terminal informado.
+	 * 
+	 * terminalId - Identificador do terminal.
+	 * 
+	 * @return - Quantidade de linhas atualizadas.
+	 */
+	
+	Integer incNSUTerminal(String terminalId);
+	
+	/**
+	 * Incrementa o NSU de eventos do terminal informado.
+	 * 
+	 * terminalId - Identificador do terminal.
+	 * 
+	 * @return - Quantidade de linhas atualizadas.
+	 */
+	
+	Integer incNSUEvent(String terminalId);
 
 }

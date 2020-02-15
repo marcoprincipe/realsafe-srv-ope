@@ -12,9 +12,29 @@ public enum SensorsStatus {
 	 * Declaração dos status disponíveis.
 	 */
 	
-	ON_LINE (0, "sensors.is.online"),
-	OFF_LINE (-1, "sensors.is.offline");
-
+	SENSORS_OK (0, "sensors.ok"),
+	SENSORS_NOT_INITIALIZED (1, "sensors.not.initialized"),
+	SENSORS_INVALID_PARMS(2, "sensors.invalid.params"), 
+	SENSORS_OPEN_COMM_ERROR(3, "sensors.open.comm.error"), 
+	SENSORS_GET_COMM_STATE_ERROR(4, "sensors.get.comm.state.error"), 
+	SENSORS_SET_COMM_STATE_ERROR(5, "sensors.set.comm.state.error"), 
+	SENSORS_GET_COMM_TIMEOUTS_ERROR(6, "sensors.get.comm.timeouts.error"), 
+	SENSORS_SET_COMM_TIMEOUTS_ERROR(7, "sensors.set.comm.timeouts.error"), 
+	SENSORS_READ_TIMEOUT(8, "sensors.read.timeout"), 
+	SENSORS_ERROR_CREATING_EVENT(9, "sensors.error.creating.event"), 
+	SENSORS_COMM_ERROR(10, "sensors.comm.error"), 
+	SENSORS_ERROR_CREATING_THREAD(11, "sensors.error.creating.thread"), 
+	SENSORS_BUFFER_EMPTY(12, "sensors.buffer.empty"), 
+	SENSORS_EVENT_NOT_FOUND(13, "sensors.event.not.found"), 
+	SENSORS_INVALID_RESPONSE(14, "sensors.invalid.response"), 
+	SENSORS_INVALID_BCC(15, "sensors.invalid.bcc"), 
+	SENSORS_COMMAND_ERROR(16, "sensors.command.error"), 
+	SENSORS_HARDWARE_NOT_FOUND(17, "sensors.hardware.not.found"), 
+	SENSORS_NAK_RECEIVED(18, "sensors.nak.received"), 
+	SENSORS_SERVER_NOT_STARTED(50, "sensors.server.not.started"), 
+	SENSORS_SERVER_TIMEOUT(51, "sensors.server.timeout"), 
+	SENSORS_NOT_IMPLEMENTED(99, "sensors.not.implemented");
+	
 	/**
 	 * Declaração das variáveis membro.
 	 */

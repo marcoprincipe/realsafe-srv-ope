@@ -23,6 +23,7 @@ public abstract class NSUTerminal_ {
 	
 	public static volatile SingularAttribute<NSUTerminal, String> terminalId;
 	public static volatile SingularAttribute<NSUTerminal, BigDecimal> nsuTerminal;
+	public static volatile SingularAttribute<NSUTerminal, BigDecimal> nsuEvent;
 	public static volatile SingularAttribute<NSUTerminal, Date> currentDateTime;
 
 }

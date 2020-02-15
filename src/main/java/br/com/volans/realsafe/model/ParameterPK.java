@@ -7,7 +7,7 @@ import javax.persistence.Column;
 import javax.persistence.Embeddable;
 
 /**
- * Classe para armazenamento dos dados da chave primária de um prâmetro.
+ * Classe para armazenamento dos dados da chave primária de um parâmetro.
  * 
  * @author Volans Informática Ltda
  */

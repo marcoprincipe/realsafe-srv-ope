@@ -12,10 +12,12 @@ import org.springframework.stereotype.Service;
 import br.com.volans.realsafe.dao.GroupOwnerDAO;
 import br.com.volans.realsafe.dao.ParameterDAO;
 import br.com.volans.realsafe.dao.UserDAO;
+import br.com.volans.realsafe.dto.EventLogDTO;
 import br.com.volans.realsafe.dto.GroupOwnerDTO;
 import br.com.volans.realsafe.dto.LoginDTO;
 import br.com.volans.realsafe.dto.ParameterDTO;
 import br.com.volans.realsafe.dto.UserDTO;
+import br.com.volans.realsafe.enums.EventLogs;
 import br.com.volans.realsafe.enums.MessageKeys;
 import br.com.volans.realsafe.enums.Parameters;
 import br.com.volans.realsafe.exception.ServiceLayerException;
@@ -24,6 +26,7 @@ import br.com.volans.realsafe.model.User;
 import br.com.volans.realsafe.service.AbstractService;
 import br.com.volans.realsafe.service.CipherService;
 import br.com.volans.realsafe.service.UserService;
+import br.com.volans.realsafe.util.Utils;
 
 /**
  * Implementação da interface dos serviços de usuários.
@@ -85,46 +88,81 @@ public class UserServiceImpl extends AbstractService implements UserService {
 		
 		UserDTO userDTO = null;
 		
-		if (loginDTO.getGroupOwnerId() == null) {
-			userDTO = findById(loginDTO.getUserId());
+		try {
+			
+			if (loginDTO.getGroupOwnerId() == null) {
+				userDTO = findById(loginDTO.getUserId());
+			}
+			else {
+				userDTO = findById(loginDTO.getGroupOwnerId(), loginDTO.getUserId());
+			}
+	
+			if (userDTO == null) {
+				throw new ServiceLayerException(getMessage(MessageKeys.USER_NOT_FOUND.getKey()));
+			}
+			
+			if (USER_INACTIVE.equals(userDTO.getStatus())) {
+				throw new ServiceLayerException(getMessage(MessageKeys.USER_INACTIVE.getKey()));
+			}
+			
+			if (USER_BLOCKED.equals(userDTO.getIsBlocked())) {
+				throw new ServiceLayerException(getMessage(MessageKeys.USER_BLOCKED.getKey()));
+			}
+			
+			String hash = cipherService.sha256(loginDTO.getPassword());
+			
+			User user = new User();
+			
+			BeanUtils.copyProperties(userDTO, user);
+			
+			user.getPk().setGroupOwnerId(userDTO.getGroupOwnerId());
+			user.getPk().setUserId(userDTO.getUserId());
+			
+			if (!userDTO.getPassword().equals(hash)) {
+				checkLoginRetries(user);
+			}
+			
+			userDTO.setLoginRetries(0);
+			userDTO.setIsBlocked(USER_NOT_BLOCKED);
+			
+			userDAO.updateLogin(user);
+			
+			userDTO.setPassword("********");
+			
+			// Efetua a gravação do log de eventos.
+			
+			EventLogDTO eventLogDTO = new EventLogDTO();
+			eventLogDTO.setUserId(loginDTO.getUserId());
+			eventLogDTO.setEventId(EventLogs.EVENT_LOGIN.getCode());
+			eventLogDTO.setEventName(getMessage(EventLogs.EVENT_LOGIN.getKey()));
+			eventLogDTO.setExtraData(Utils.objectToJson(loginDTO));
+			eventLogDTO.setMessage(getMessage(MessageKeys.SUCCESS.getKey()));
+			eventLogDTO.setResultCode(0L);
+			
+			createEventLog(eventLogDTO);
+			
+			return userDTO;
+		
 		}
-		else {
-			userDTO = findById(loginDTO.getGroupOwnerId(), loginDTO.getUserId());
-		}
+		catch (ServiceLayerException ex) {
+			
+			loginDTO.setPassword("********");
+			
+			// Efetua a gravação do log de eventos.
+			
+			EventLogDTO eventLogDTO = new EventLogDTO();
+			eventLogDTO.setUserId(loginDTO.getUserId());
+			eventLogDTO.setEventId(EventLogs.EVENT_LOGIN.getCode());
+			eventLogDTO.setEventName(getMessage(EventLogs.EVENT_LOGIN.getKey()));
+			eventLogDTO.setExtraData(Utils.objectToJson(loginDTO));
+			eventLogDTO.setMessage(ex.getMessage());
+			eventLogDTO.setResultCode(ex.getCode());
+			
+			createEventLog(eventLogDTO);
 
-		if (userDTO == null) {
-			throw new ServiceLayerException(getMessage(MessageKeys.USER_NOT_FOUND.getKey()));
+			throw ex;
+			
 		}
-		
-		if (USER_INACTIVE.equals(userDTO.getStatus())) {
-			throw new ServiceLayerException(getMessage(MessageKeys.USER_INACTIVE.getKey()));
-		}
-		
-		if (USER_BLOCKED.equals(userDTO.getIsBlocked())) {
-			throw new ServiceLayerException(getMessage(MessageKeys.USER_BLOCKED.getKey()));
-		}
-		
-		String hash = cipherService.sha256(loginDTO.getPassword());
-		
-		User user = new User();
-		
-		BeanUtils.copyProperties(userDTO, user);
-		
-		user.getPk().setGroupOwnerId(userDTO.getGroupOwnerId());
-		user.getPk().setUserId(userDTO.getUserId());
-		
-		if (!userDTO.getPassword().equals(hash)) {
-			checkLoginRetries(user);
-		}
-		
-		userDTO.setLoginRetries(0);
-		userDTO.setIsBlocked(USER_NOT_BLOCKED);
-		
-		userDAO.updateLogin(user);
-		
-		userDTO.setPassword("********");
-		
-		return userDTO;
 		
 	}
 	
@@ -140,38 +178,77 @@ public class UserServiceImpl extends AbstractService implements UserService {
 	@Transactional
 	public Integer updatePassword(UserDTO userDTO) throws ServiceLayerException {
 		
+		Integer rowsAffected = null;
 		UserDTO userDBDTO = null;
 
-		if (userDTO.getPassword() == null || userDTO.getPassword().trim().isEmpty()) {
-			throw new ServiceLayerException(getMessage(MessageKeys.PASSWORD_NOT_INFORMED.getKey()));
+		try {
+			
+			if (userDTO.getPassword() == null || userDTO.getPassword().trim().isEmpty()) {
+				throw new ServiceLayerException(getMessage(MessageKeys.PASSWORD_NOT_INFORMED.getKey()));
+			}
+			
+			if (!checkPassword(userDTO.getPassword())) {
+				throw new ServiceLayerException(getMessage(MessageKeys.INVALID_PASSWORD_FORMAT.getKey()));
+			}
+			
+			if (userDTO.getGroupOwnerId() == null) {
+				userDBDTO = findById(userDTO.getUserId());
+			}
+			else {
+				userDBDTO = findById(userDTO.getGroupOwnerId(), userDTO.getUserId());
+			}
+			
+			if (userDBDTO == null) {
+				throw new ServiceLayerException(getMessage(MessageKeys.USER_NOT_FOUND.getKey()));
+			}
+			
+			String hash = cipherService.sha256(userDTO.getPassword());
+			
+			User user = new User();
+			
+			BeanUtils.copyProperties(userDBDTO, user);
+			
+			user.getPk().setGroupOwnerId(userDTO.getGroupOwnerId());
+			user.getPk().setUserId(userDTO.getUserId());
+			user.setPassword(hash);
+			
+			rowsAffected = userDAO.updatePassword(user);
+			
+			// Efetua a gravação do log de eventos.
+
+			userDTO.setPassword("********");
+			
+			EventLogDTO eventLogDTO = new EventLogDTO();
+			eventLogDTO.setUserId(userDTO.getUserId());
+			eventLogDTO.setEventId(EventLogs.EVENT_CHANGE_PASSWORD.getCode());
+			eventLogDTO.setEventName(getMessage(EventLogs.EVENT_CHANGE_PASSWORD.getKey()));
+			eventLogDTO.setExtraData(Utils.objectToJson(userDTO));
+			eventLogDTO.setMessage(getMessage(MessageKeys.SUCCESS.getKey()));
+			eventLogDTO.setResultCode(0L);
+			
+			createEventLog(eventLogDTO);
+			
+			
 		}
-		
-		if (!checkPassword(userDTO.getPassword())) {
-			throw new ServiceLayerException(getMessage(MessageKeys.INVALID_PASSWORD_FORMAT.getKey()));
+		catch (ServiceLayerException ex) {
+			
+			// Efetua a gravação do log de eventos.
+
+			userDTO.setPassword("********");
+			
+			EventLogDTO eventLogDTO = new EventLogDTO();
+			eventLogDTO.setUserId(userDTO.getUserId());
+			eventLogDTO.setEventId(EventLogs.EVENT_CHANGE_PASSWORD.getCode());
+			eventLogDTO.setEventName(getMessage(EventLogs.EVENT_CHANGE_PASSWORD.getKey()));
+			eventLogDTO.setExtraData(Utils.objectToJson(userDTO));
+			eventLogDTO.setMessage(ex.getMessage());
+			eventLogDTO.setResultCode(ex.getCode());
+			
+			createEventLog(eventLogDTO);
+			
+			throw ex;
+			
 		}
-		
-		if (userDTO.getGroupOwnerId() == null) {
-			userDBDTO = findById(userDTO.getUserId());
-		}
-		else {
-			userDBDTO = findById(userDTO.getGroupOwnerId(), userDTO.getUserId());
-		}
-		
-		if (userDBDTO == null) {
-			throw new ServiceLayerException(getMessage(MessageKeys.USER_NOT_FOUND.getKey()));
-		}
-		
-		String hash = cipherService.sha256(userDTO.getPassword());
-		
-		User user = new User();
-		
-		BeanUtils.copyProperties(userDBDTO, user);
-		
-		user.getPk().setGroupOwnerId(userDTO.getGroupOwnerId());
-		user.getPk().setUserId(userDTO.getUserId());
-		user.setPassword(hash);
-		
-		Integer rowsAffected = userDAO.updatePassword(user);
 
 		return rowsAffected;
 		

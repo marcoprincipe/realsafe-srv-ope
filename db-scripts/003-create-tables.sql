@@ -16,6 +16,7 @@ USE realsafe_ope_db;
 
 DROP TABLE IF EXISTS tb_parameter;
 DROP TABLE IF EXISTS tb_terminal_parameter;
+DROP TABLE IF EXISTS tb_event_log;
 DROP TABLE IF EXISTS tb_nsu_terminal;
 DROP TABLE IF EXISTS tb_terminal_status;
 DROP TABLE IF EXISTS tb_cash_collection_detail;
@@ -268,6 +269,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON tb_terminal_status TO 'realsafe_user'@'l
 CREATE TABLE IF NOT EXISTS tb_nsu_terminal (
   terminal_id VARCHAR(8) NOT NULL,
   nsu_terminal DECIMAL(7,0) NOT NULL DEFAULT 0,
+  nsu_event DECIMAL(7,0) NOT NULL DEFAULT 0,
   PRIMARY KEY (terminal_id),
   CONSTRAINT fk_tb_nsu_terminal_tb_terminal1
     FOREIGN KEY (terminal_id)
@@ -658,3 +660,26 @@ CREATE TABLE IF NOT EXISTS tb_terminal_parameter (
 ENGINE = InnoDB;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON tb_terminal_parameter TO 'realsafe_user'@'localhost';
+
+-- -----------------------------------------------------
+-- Efetua a criação da tabela tb_event_log
+-- -----------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS tb_event_log (
+  nsu_event VARCHAR(15) NOT NULL,
+  terminal_id VARCHAR(8) NOT NULL,
+  user_id DECIMAL(12) NULL,
+  date_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  event_id INT NOT NULL,
+  event_name VARCHAR(50) NOT NULL,
+  nsu_transaction VARCHAR(15) NULL,
+  result_code INT NOT NULL,
+  message VARCHAR(256) NULL,
+  extra_data VARCHAR(1000) NULL,
+  status CHAR(1) NOT NULL DEFAULT 'P',
+  PRIMARY KEY (nsu_event))
+ENGINE = InnoDB;
+
+CREATE INDEX tb_event_log_idx1 ON tb_event_log (user_id ASC) VISIBLE;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON tb_event_log TO 'realsafe_user'@'localhost';

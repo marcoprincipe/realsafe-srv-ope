@@ -24,6 +24,7 @@ import br.com.volans.realsafe.dao.TerminalDAO;
 import br.com.volans.realsafe.dao.TerminalStatusDAO;
 import br.com.volans.realsafe.dao.TransactionLogDAO;
 import br.com.volans.realsafe.dto.ClosingDetailDTO;
+import br.com.volans.realsafe.dto.EventLogDTO;
 import br.com.volans.realsafe.dto.NSUTerminalDTO;
 import br.com.volans.realsafe.dto.OpeningDetailDTO;
 import br.com.volans.realsafe.dto.TerminalDTO;
@@ -34,6 +35,7 @@ import br.com.volans.realsafe.dto.payload.GetOpeningDetailRequest;
 import br.com.volans.realsafe.dto.payload.OpenTerminalRequest;
 import br.com.volans.realsafe.dto.payload.PrintCloseTerminalReceiptRequest;
 import br.com.volans.realsafe.dto.payload.PrintOpenTerminalReceiptRequest;
+import br.com.volans.realsafe.enums.EventLogs;
 import br.com.volans.realsafe.enums.MessageKeys;
 import br.com.volans.realsafe.enums.TerminalStatuses;
 import br.com.volans.realsafe.enums.Transactions;
@@ -45,6 +47,7 @@ import br.com.volans.realsafe.model.TransactionLog;
 import br.com.volans.realsafe.service.AbstractService;
 import br.com.volans.realsafe.service.PrinterService;
 import br.com.volans.realsafe.service.TerminalService;
+import br.com.volans.realsafe.util.Utils;
 
 /**
  * Implementação da interface dos serviços de terminais.
@@ -158,107 +161,144 @@ public class TerminalServiceImpl extends AbstractService implements TerminalServ
 	public TerminalStatusDTO openTerminal(OpenTerminalRequest request) throws ServiceLayerException {
 		
 		Date accountingDate = null;
-
+		TerminalStatusDTO current = null;
+		
 		try {
-			
-			if (request.getAccountingDate() == null || 
-				request.getAccountingDate().trim().equals("")) {
-				throw new ServiceLayerException(getMessage(MessageKeys.ACCOUNTING_DATE_NOT_INFORMED.getKey()));
-			}
-			
-			SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-			sdf.setLenient(false);
-			
-			accountingDate = sdf.parse(request.getAccountingDate());
-			
-			Calendar calNow = Calendar.getInstance();
-			calNow.set(Calendar.HOUR_OF_DAY, 0);
-			calNow.set(Calendar.MINUTE, 0);
-			calNow.set(Calendar.SECOND, 0);
-			calNow.set(Calendar.MILLISECOND, 0);
-			
-			if (accountingDate.compareTo(calNow.getTime()) < 0) {
+		
+			try {
+				
+				if (request.getAccountingDate() == null || 
+					request.getAccountingDate().trim().equals("")) {
+					throw new ServiceLayerException(getMessage(MessageKeys.ACCOUNTING_DATE_NOT_INFORMED.getKey()));
+				}
+				
+				SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+				sdf.setLenient(false);
+				
+				accountingDate = sdf.parse(request.getAccountingDate());
+				
+				Calendar calNow = Calendar.getInstance();
+				calNow.set(Calendar.HOUR_OF_DAY, 0);
+				calNow.set(Calendar.MINUTE, 0);
+				calNow.set(Calendar.SECOND, 0);
+				calNow.set(Calendar.MILLISECOND, 0);
+				
+				if (accountingDate.compareTo(calNow.getTime()) < 0) {
+					throw new ServiceLayerException(getMessage(MessageKeys.INVALID_ACCOUNTING_DATE.getKey()));
+				}
+				
+				Calendar calMax = Calendar.getInstance();
+				calMax.set(Calendar.HOUR_OF_DAY, 0);
+				calMax.set(Calendar.MINUTE, 0);
+				calMax.set(Calendar.SECOND, 0);
+				calMax.set(Calendar.MILLISECOND, 0);
+				calMax.add(Calendar.DAY_OF_MONTH, 3);
+				
+				if (accountingDate.compareTo(calMax.getTime()) > 0) {
+					throw new ServiceLayerException(getMessage(MessageKeys.INVALID_ACCOUNTING_DATE.getKey()));
+				}
+				
+			} 
+			catch (ParseException ex) {
 				throw new ServiceLayerException(getMessage(MessageKeys.INVALID_ACCOUNTING_DATE.getKey()));
 			}
 			
-			Calendar calMax = Calendar.getInstance();
-			calMax.set(Calendar.HOUR_OF_DAY, 0);
-			calMax.set(Calendar.MINUTE, 0);
-			calMax.set(Calendar.SECOND, 0);
-			calMax.set(Calendar.MILLISECOND, 0);
-			calMax.add(Calendar.DAY_OF_MONTH, 3);
+			// Recupera os dados do status do terminal.
 			
-			if (accountingDate.compareTo(calMax.getTime()) > 0) {
-				throw new ServiceLayerException(getMessage(MessageKeys.INVALID_ACCOUNTING_DATE.getKey()));
-			}
+			TerminalStatusDTO terminalStatusDTO = getTerminalStatus(request.getTerminalId());
 			
-		} 
-		catch (ParseException ex) {
-			throw new ServiceLayerException(getMessage(MessageKeys.INVALID_ACCOUNTING_DATE.getKey()));
+			// Obtem o próximo NSU.
+			
+			NSUTerminalDTO nsuTerminal = getNextNSUTerminal(request.getTerminalId());
+			String nsu = String.format("%s%07d", request.getTerminalId(), nsuTerminal.getNsuTerminal().longValue());
+	
+			// Efetua a gravação os dados da tabela de transações.
+			
+			TransactionLog transactionLog = new TransactionLog();
+			
+			transactionLog.setNsuTerminal(nsu);
+			transactionLog.setGroupOwnerId(request.getGroupOwnerId());
+			transactionLog.setUnitId(request.getUnitId());
+			transactionLog.setUserId(request.getUserId());
+			transactionLog.setTerminalId(request.getTerminalId());
+			transactionLog.setFunctionalityId(Transactions.OPENING.getCode());
+			transactionLog.setAccountingDate(accountingDate);
+			transactionLog.setDateTime(request.getDateTime());
+			transactionLog.setBankNotes(request.getBankNotes());
+			transactionLog.setAmount(request.getAmount());
+			
+			transactionLogDAO.insert(transactionLog);
+			
+			// Efetua a gravação dos detalhes da abertura.
+			
+			OpeningDetail openingDetail = new OpeningDetail();
+			
+			openingDetail.setNsuTerminal(nsu);
+			openingDetail.setAccountingDate(accountingDate);
+			openingDetail.setOpeningDateTime(request.getDateTime());
+			openingDetail.setBankNotesInSafe(request.getBankNotes());
+			openingDetail.setAmountInSafe(request.getAmount());
+			openingDetail.setLastClosingDateTime(terminalStatusDTO.getLastClosingDateTime());
+			openingDetail.setLastClosingBanknotes(terminalStatusDTO.getLastClosingBanknotes());
+			openingDetail.setLastClosingAmount(terminalStatusDTO.getLastClosingAmount());
+			openingDetail.setEtvClosing(request.getEtvClosing());
+			
+			openingDetailDAO.insert(openingDetail);
+			
+			//Efetua a gravação dos dados do status do terminal.
+			
+			TerminalStatus transactionStatus = new TerminalStatus();
+			
+			BeanUtils.copyProperties(terminalStatusDTO, transactionStatus);
+			
+			transactionStatus.setAccountingDate(accountingDate);
+			transactionStatus.setBanknotesInSafe(request.getBankNotes());
+			transactionStatus.setAmountInSafe(request.getAmount());
+			
+			transactionStatus.setLastOpeningDateTime(request.getDateTime());
+			transactionStatus.setLastOpeningBanknotes(request.getBankNotes());
+			transactionStatus.setLastOpeningAmount(request.getAmount());
+			transactionStatus.setEtvClosing(request.getEtvClosing());
+			transactionStatus.setStatus(TerminalStatuses.OPEN.getCode());
+			
+			terminalStatusDAO.update(transactionStatus);
+			
+			current = getTerminalStatus(request.getTerminalId());
+			current.setLastNSU(nsu);
+			
+			// Efetua a gravação do log de eventos.
+			
+			EventLogDTO eventLogDTO = new EventLogDTO();
+			eventLogDTO.setTerminalId(request.getTerminalId());
+			eventLogDTO.setUserId(request.getUserId());
+			eventLogDTO.setEventId(EventLogs.EVENT_OPEN_TERMINAL.getCode());
+			eventLogDTO.setEventName(getMessage(EventLogs.EVENT_OPEN_TERMINAL.getKey()));
+			eventLogDTO.setNsuTransaction(nsu);
+			eventLogDTO.setExtraData(Utils.objectToJson(request));
+			eventLogDTO.setMessage(getMessage(MessageKeys.SUCCESS.getKey()));
+			eventLogDTO.setResultCode(0L);
+			
+			createEventLog(eventLogDTO);
+			
 		}
-		
-		// Recupera os dados do status do terminal.
-		
-		TerminalStatusDTO terminalStatusDTO = getTerminalStatus(request.getTerminalId());
-		
-		// Obtem o próximo NSU.
-		
-		NSUTerminalDTO nsuTerminal = getNextNSU(request.getTerminalId());
-		String nsu = String.format("%s%07d", request.getTerminalId(), nsuTerminal.getNsuTerminal().longValue());
-
-		// Efetua a gravação os dados da tabela de transações.
-		
-		TransactionLog transactionLog = new TransactionLog();
-		
-		transactionLog.setNsuTerminal(nsu);
-		transactionLog.setGroupOwnerId(request.getGroupOwnerId());
-		transactionLog.setUnitId(request.getUnitId());
-		transactionLog.setUserId(request.getUserId());
-		transactionLog.setTerminalId(request.getTerminalId());
-		transactionLog.setFunctionalityId(Transactions.OPENING.getCode());
-		transactionLog.setAccountingDate(accountingDate);
-		transactionLog.setDateTime(request.getDateTime());
-		transactionLog.setBankNotes(request.getBankNotes());
-		transactionLog.setAmount(request.getAmount());
-		
-		transactionLogDAO.insert(transactionLog);
-		
-		// Efetua a gravação dos detalhes da abertura.
-		
-		OpeningDetail openingDetail = new OpeningDetail();
-		
-		openingDetail.setNsuTerminal(nsu);
-		openingDetail.setAccountingDate(accountingDate);
-		openingDetail.setOpeningDateTime(request.getDateTime());
-		openingDetail.setBankNotesInSafe(request.getBankNotes());
-		openingDetail.setAmountInSafe(request.getAmount());
-		openingDetail.setLastClosingDateTime(terminalStatusDTO.getLastClosingDateTime());
-		openingDetail.setLastClosingBanknotes(terminalStatusDTO.getLastClosingBanknotes());
-		openingDetail.setLastClosingAmount(terminalStatusDTO.getLastClosingAmount());
-		openingDetail.setEtvClosing(request.getEtvClosing());
-		
-		openingDetailDAO.insert(openingDetail);
-		
-		//Efetua a gravação dos dados do status do terminal.
-		
-		TerminalStatus transactionStatus = new TerminalStatus();
-		
-		BeanUtils.copyProperties(terminalStatusDTO, transactionStatus);
-		
-		transactionStatus.setAccountingDate(accountingDate);
-		transactionStatus.setBanknotesInSafe(request.getBankNotes());
-		transactionStatus.setAmountInSafe(request.getAmount());
-		
-		transactionStatus.setLastOpeningDateTime(request.getDateTime());
-		transactionStatus.setLastOpeningBanknotes(request.getBankNotes());
-		transactionStatus.setLastOpeningAmount(request.getAmount());
-		transactionStatus.setEtvClosing(request.getEtvClosing());
-		transactionStatus.setStatus(TerminalStatuses.OPEN.getCode());
-		
-		terminalStatusDAO.update(transactionStatus);
-		
-		TerminalStatusDTO current = getTerminalStatus(request.getTerminalId());
-		current.setLastNSU(nsu);
+		catch (ServiceLayerException ex) {
+			
+			// Efetua a gravação do log de eventos.
+			
+			EventLogDTO eventLogDTO = new EventLogDTO();
+			eventLogDTO.setTerminalId(request.getTerminalId());
+			eventLogDTO.setUserId(request.getUserId());
+			eventLogDTO.setEventId(EventLogs.EVENT_OPEN_TERMINAL.getCode());
+			eventLogDTO.setEventName(getMessage(EventLogs.EVENT_OPEN_TERMINAL.getKey()));
+			eventLogDTO.setExtraData(Utils.objectToJson(request));
+			eventLogDTO.setMessage(ex.getMessage());
+			eventLogDTO.setResultCode(ex.getCode());
+			
+			createEventLog(eventLogDTO);
+			
+			throw ex;
+			
+		}
 		
 		return current;
 	
@@ -371,62 +411,101 @@ public class TerminalServiceImpl extends AbstractService implements TerminalServ
 	@Override
 	@Transactional
 	public TerminalStatusDTO closeTerminal(CloseTerminalRequest request) throws ServiceLayerException {
-
-		// Recupera os dados do status do terminal.
 		
-		TerminalStatusDTO terminalStatusDTO = getTerminalStatus(request.getTerminalId());
+		TerminalStatusDTO result = null;
 		
-		// Obtem o próximo NSU.
+		try {
 		
-		NSUTerminalDTO nsuTerminal = getNextNSU(request.getTerminalId());
-		String nsu = String.format("%s%07d", request.getTerminalId(), nsuTerminal.getNsuTerminal().longValue());
-
-		// Efetua a gravação os dados da tabela de transações.
-		
-		TransactionLog transactionLog = new TransactionLog();
-		
-		transactionLog.setNsuTerminal(nsu);
-		transactionLog.setGroupOwnerId(request.getGroupOwnerId());
-		transactionLog.setUnitId(request.getUnitId());
-		transactionLog.setUserId(request.getUserId());
-		transactionLog.setTerminalId(request.getTerminalId());
-		transactionLog.setFunctionalityId(Transactions.CLOSING.getCode());
-		transactionLog.setAccountingDate(terminalStatusDTO.getAccountingDate());
-		transactionLog.setDateTime(request.getDateTime());
-		transactionLog.setBankNotes(request.getBankNotes());
-		transactionLog.setAmount(request.getAmount());
-		
-		transactionLogDAO.insert(transactionLog);
-		
-		// Efetua a gravação dos detalhes do fechamento.
-		
-		ClosingDetail closingDetail = new ClosingDetail();
-		
-		closingDetail.setNsuTerminal(nsu);
-		closingDetail.setClosingDateTime(request.getDateTime());
-		closingDetail.setBankNotesInSafe(request.getBankNotes());
-		closingDetail.setAmountInSafe(request.getAmount());
-		closingDetail.setLastOpeningDateTime(terminalStatusDTO.getLastOpeningDateTime());
-		closingDetail.setLastOpeningBanknotes(terminalStatusDTO.getLastOpeningBanknotes());
-		closingDetail.setLastOpeningAmount(terminalStatusDTO.getLastOpeningAmount());
-		
-		closingDetailDAO.insert(closingDetail);
-		
-		//Efetua a gravação dos dados do status do terminal.
-		
-		TerminalStatus transactionStatus = new TerminalStatus();
-		
-		BeanUtils.copyProperties(terminalStatusDTO, transactionStatus);
-		
-		transactionStatus.setLastClosingDateTime(request.getDateTime());
-		transactionStatus.setLastClosingBanknotes(request.getBankNotes());
-		transactionStatus.setLastClosingAmount(request.getAmount());
-		transactionStatus.setStatus(TerminalStatuses.CLOSED.getCode());
-		
-		terminalStatusDAO.update(transactionStatus);
-		
-		TerminalStatusDTO result = getTerminalStatus(request.getTerminalId());
-		result.setLastNSU(nsu);
+			// Recupera os dados do status do terminal.
+			
+			TerminalStatusDTO terminalStatusDTO = getTerminalStatus(request.getTerminalId());
+			
+			// Obtem o próximo NSU.
+			
+			NSUTerminalDTO nsuTerminal = getNextNSUTerminal(request.getTerminalId());
+			String nsu = String.format("%s%07d", request.getTerminalId(), nsuTerminal.getNsuTerminal().longValue());
+	
+			// Efetua a gravação os dados da tabela de transações.
+			
+			TransactionLog transactionLog = new TransactionLog();
+			
+			transactionLog.setNsuTerminal(nsu);
+			transactionLog.setGroupOwnerId(request.getGroupOwnerId());
+			transactionLog.setUnitId(request.getUnitId());
+			transactionLog.setUserId(request.getUserId());
+			transactionLog.setTerminalId(request.getTerminalId());
+			transactionLog.setFunctionalityId(Transactions.CLOSING.getCode());
+			transactionLog.setAccountingDate(terminalStatusDTO.getAccountingDate());
+			transactionLog.setDateTime(request.getDateTime());
+			transactionLog.setBankNotes(request.getBankNotes());
+			transactionLog.setAmount(request.getAmount());
+			
+			transactionLogDAO.insert(transactionLog);
+			
+			// Efetua a gravação dos detalhes do fechamento.
+			
+			ClosingDetail closingDetail = new ClosingDetail();
+			
+			closingDetail.setNsuTerminal(nsu);
+			closingDetail.setClosingDateTime(request.getDateTime());
+			closingDetail.setBankNotesInSafe(request.getBankNotes());
+			closingDetail.setAmountInSafe(request.getAmount());
+			closingDetail.setLastOpeningDateTime(terminalStatusDTO.getLastOpeningDateTime());
+			closingDetail.setLastOpeningBanknotes(terminalStatusDTO.getLastOpeningBanknotes());
+			closingDetail.setLastOpeningAmount(terminalStatusDTO.getLastOpeningAmount());
+			
+			closingDetailDAO.insert(closingDetail);
+			
+			//Efetua a gravação dos dados do status do terminal.
+			
+			TerminalStatus transactionStatus = new TerminalStatus();
+			
+			BeanUtils.copyProperties(terminalStatusDTO, transactionStatus);
+			
+			transactionStatus.setLastClosingDateTime(request.getDateTime());
+			transactionStatus.setLastClosingBanknotes(request.getBankNotes());
+			transactionStatus.setLastClosingAmount(request.getAmount());
+			transactionStatus.setStatus(TerminalStatuses.CLOSED.getCode());
+			
+			terminalStatusDAO.update(transactionStatus);
+			
+			result = getTerminalStatus(request.getTerminalId());
+			result.setLastNSU(nsu);
+			
+			// Efetua a gravação do log de eventos.
+			
+			EventLogDTO eventLogDTO = new EventLogDTO();
+			eventLogDTO.setTerminalId(request.getTerminalId());
+			eventLogDTO.setUserId(request.getUserId());
+			eventLogDTO.setEventId(EventLogs.EVENT_CLOSE_TERMINAL.getCode());
+			eventLogDTO.setEventName(getMessage(EventLogs.EVENT_CLOSE_TERMINAL.getKey()));
+			eventLogDTO.setNsuTransaction(nsu);
+			eventLogDTO.setExtraData(Utils.objectToJson(request));
+			eventLogDTO.setMessage(getMessage(MessageKeys.SUCCESS.getKey()));
+			eventLogDTO.setResultCode(0L);
+			
+			createEventLog(eventLogDTO);
+			
+			
+		}
+		catch (ServiceLayerException ex) {
+			
+			// Efetua a gravação do log de eventos.
+			
+			EventLogDTO eventLogDTO = new EventLogDTO();
+			eventLogDTO.setTerminalId(request.getTerminalId());
+			eventLogDTO.setUserId(request.getUserId());
+			eventLogDTO.setEventId(EventLogs.EVENT_CLOSE_TERMINAL.getCode());
+			eventLogDTO.setEventName(getMessage(EventLogs.EVENT_CLOSE_TERMINAL.getKey()));
+			eventLogDTO.setExtraData(Utils.objectToJson(request));
+			eventLogDTO.setMessage(ex.getMessage());
+			eventLogDTO.setResultCode(ex.getCode());
+			
+			createEventLog(eventLogDTO);
+			
+			throw ex;
+			
+		}
 		
 		return result;
 

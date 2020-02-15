@@ -22,6 +22,7 @@ import br.com.volans.realsafe.dao.CashCollectionDetailDAO;
 import br.com.volans.realsafe.dao.TerminalStatusDAO;
 import br.com.volans.realsafe.dao.TransactionLogDAO;
 import br.com.volans.realsafe.dto.DepositDetailDTO;
+import br.com.volans.realsafe.dto.EventLogDTO;
 import br.com.volans.realsafe.dto.NSUTerminalDTO;
 import br.com.volans.realsafe.dto.TerminalStatusDTO;
 import br.com.volans.realsafe.dto.TransactionLogDTO;
@@ -30,6 +31,7 @@ import br.com.volans.realsafe.dto.payload.CollectCashResponse;
 import br.com.volans.realsafe.dto.payload.ListCashCollectionDetailsRequest;
 import br.com.volans.realsafe.dto.payload.ListCashCollectionRequest;
 import br.com.volans.realsafe.dto.payload.PrintCollectCashReceiptRequest;
+import br.com.volans.realsafe.enums.EventLogs;
 import br.com.volans.realsafe.enums.MessageKeys;
 import br.com.volans.realsafe.enums.TransactionStatuses;
 import br.com.volans.realsafe.enums.Transactions;
@@ -39,6 +41,7 @@ import br.com.volans.realsafe.model.TransactionLog;
 import br.com.volans.realsafe.service.AbstractService;
 import br.com.volans.realsafe.service.CashCollectionService;
 import br.com.volans.realsafe.service.PrinterService;
+import br.com.volans.realsafe.util.Utils;
 
 /**
  * Implementação da interface dos serviços de recolhimento de numerário.
@@ -101,70 +104,109 @@ public class CashCollectionServiceImpl extends AbstractService implements CashCo
 	@Override
 	@Transactional
 	public CollectCashResponse collectCash(CollectCashRequest request) throws ServiceLayerException {
-
-		// Verifica os dados informados.
 		
-		if (request.getTerminalId() == null || request.getTerminalId().trim().isEmpty()) {
-			throw new ServiceLayerException(getMessage(MessageKeys.TERMINAL_CODE_NOT_INFORMED.getKey()));
+		CollectCashResponse result = null;
+		
+		try {
+				
+			// Verifica os dados informados.
+			
+			if (request.getTerminalId() == null || request.getTerminalId().trim().isEmpty()) {
+				throw new ServiceLayerException(getMessage(MessageKeys.TERMINAL_CODE_NOT_INFORMED.getKey()));
+			}
+			
+			// Recupera os dados do status do terminal.
+			
+			TerminalStatusDTO terminalStatusDTO = terminalStatusDAO.findByTerminalId(request.getTerminalId());
+			
+			if (terminalStatusDTO == null) {
+				throw new ServiceLayerException(getMessage(MessageKeys.TERMINAL_STATUS_NOT_FOUND.getKey()));
+			}
+			
+			// Obtem o próximo NSU.
+			
+			NSUTerminalDTO nsuTerminal = getNextNSUTerminal(request.getTerminalId());
+			String nsu = String.format("%s%07d", request.getTerminalId(), nsuTerminal.getNsuTerminal().longValue());
+	
+			// Efetua a gravação os dados da tabela de transações.
+			
+			TransactionLog transactionLog = new TransactionLog();
+			
+			transactionLog.setNsuTerminal(nsu);
+			transactionLog.setGroupOwnerId(request.getGroupOwnerId());
+			transactionLog.setUnitId(request.getUnitId());
+			transactionLog.setUserId(request.getUserId());
+			transactionLog.setTerminalId(request.getTerminalId());
+			transactionLog.setAccountingDate(terminalStatusDTO.getAccountingDate());
+			transactionLog.setDateTime(nsuTerminal.getCurrentDateTime());
+			transactionLog.setFunctionalityId(Transactions.CASH_COLLECTION.getCode());
+			transactionLog.setBankNotes(request.getBankNotes());
+			transactionLog.setAmount(request.getAmount());
+			
+			transactionLogDAO.insert(transactionLog);
+			
+			// Efetua a gravação dos detalhes do recolhimento de numerário.
+	
+			cashCollectionDetailDAO.insert(nsu, request.getTerminalId(), 
+					TransactionStatuses.PENDENT.getCode(), Transactions.DEPOSIT.getCode());
+			
+			// Atualiza os dados do status do terminal.
+			
+			TerminalStatus terminalStatus = new TerminalStatus();
+	
+			BeanUtils.copyProperties(terminalStatusDTO, terminalStatus);
+			
+			terminalStatus.setBanknotesInSafe(0);
+			terminalStatus.setAmountInSafe(BigDecimal.ZERO);
+			
+			terminalStatusDAO.update(terminalStatus);
+			
+			// Atualiza os dados do recolhimento de numerário.
+			
+			Integer rowsAffected = cashCollectionDAO.collectCash(request.getTerminalId());
+			
+			// Retorna os dados do resultado da execução.
+			
+			result = new CollectCashResponse();
+			
+			result.setRowsAffected(rowsAffected);
+			result.setDateTime(nsuTerminal.getCurrentDateTime());
+			result.setNsuTerminal(nsu);
+			
+			// Efetua a gravação do log de eventos.
+			
+			EventLogDTO eventLogDTO = new EventLogDTO();
+			eventLogDTO.setTerminalId(request.getTerminalId());
+			eventLogDTO.setUserId(request.getUserId());
+			eventLogDTO.setEventId(EventLogs.EVENT_CASH_COLLECTION.getCode());
+			eventLogDTO.setEventName(getMessage(EventLogs.EVENT_CASH_COLLECTION.getKey()));
+			eventLogDTO.setNsuTransaction(nsu);
+			eventLogDTO.setExtraData(Utils.objectToJson(request));
+			eventLogDTO.setMessage(getMessage(MessageKeys.SUCCESS.getKey()));
+			eventLogDTO.setResultCode(0L);
+			
+			createEventLog(eventLogDTO);
+			
+			
 		}
-		
-		// Recupera os dados do status do terminal.
-		
-		TerminalStatusDTO terminalStatusDTO = terminalStatusDAO.findByTerminalId(request.getTerminalId());
-		
-		if (terminalStatusDTO == null) {
-			throw new ServiceLayerException(getMessage(MessageKeys.TERMINAL_STATUS_NOT_FOUND.getKey()));
+		catch (ServiceLayerException ex) {
+			
+			// Efetua a gravação do log de eventos.
+			
+			EventLogDTO eventLogDTO = new EventLogDTO();
+			eventLogDTO.setTerminalId(request.getTerminalId());
+			eventLogDTO.setUserId(request.getUserId());
+			eventLogDTO.setEventId(EventLogs.EVENT_CASH_COLLECTION.getCode());
+			eventLogDTO.setEventName(getMessage(EventLogs.EVENT_CASH_COLLECTION.getKey()));
+			eventLogDTO.setExtraData(Utils.objectToJson(request));
+			eventLogDTO.setMessage(ex.getMessage());
+			eventLogDTO.setResultCode(ex.getCode());
+			
+			createEventLog(eventLogDTO);
+
+			throw ex;
+			
 		}
-		
-		// Obtem o próximo NSU.
-		
-		NSUTerminalDTO nsuTerminal = getNextNSU(request.getTerminalId());
-		String nsu = String.format("%s%07d", request.getTerminalId(), nsuTerminal.getNsuTerminal().longValue());
-
-		// Efetua a gravação os dados da tabela de transações.
-		
-		TransactionLog transactionLog = new TransactionLog();
-		
-		transactionLog.setNsuTerminal(nsu);
-		transactionLog.setGroupOwnerId(request.getGroupOwnerId());
-		transactionLog.setUnitId(request.getUnitId());
-		transactionLog.setUserId(request.getUserId());
-		transactionLog.setTerminalId(request.getTerminalId());
-		transactionLog.setAccountingDate(terminalStatusDTO.getAccountingDate());
-		transactionLog.setDateTime(nsuTerminal.getCurrentDateTime());
-		transactionLog.setFunctionalityId(Transactions.CASH_COLLECTION.getCode());
-		transactionLog.setBankNotes(request.getBankNotes());
-		transactionLog.setAmount(request.getAmount());
-		
-		transactionLogDAO.insert(transactionLog);
-		
-		// Efetua a gravação dos detalhes do recolhimento de numerário.
-
-		cashCollectionDetailDAO.insert(nsu, request.getTerminalId(), 
-				TransactionStatuses.PENDENT.getCode(), Transactions.DEPOSIT.getCode());
-		
-		// Atualiza os dados do status do terminal.
-		
-		TerminalStatus terminalStatus = new TerminalStatus();
-
-		BeanUtils.copyProperties(terminalStatusDTO, terminalStatus);
-		
-		terminalStatus.setBanknotesInSafe(0);
-		terminalStatus.setAmountInSafe(BigDecimal.ZERO);
-		
-		terminalStatusDAO.update(terminalStatus);
-		
-		// Atualiza os dados do recolhimento de numerário.
-		
-		Integer rowsAffected = cashCollectionDAO.collectCash(request.getTerminalId());
-		
-		// Retorna os dados do resultado da execução.
-		
-		CollectCashResponse result = new CollectCashResponse();
-		
-		result.setRowsAffected(rowsAffected);
-		result.setDateTime(nsuTerminal.getCurrentDateTime());
-		result.setNsuTerminal(nsu);
 
 		return result;
 	}
