@@ -77,12 +77,12 @@
 		<repository>
 			<id>artifactory-local</id>
 			<name>DESKTOP-5TB5LT1-releases</name>
-			<url>http://localhost:8081/artifactory/realsafe-maven-local</url>
+			<url>http://localhost:8081/artifactory/realsafe-maven-local/${environment}</url>
 		</repository>
 		<snapshotRepository>
 			<id>artifactory-local</id>
 			<name>DESKTOP-5TB5LT1-snapshots</name>
-			<url>http://localhost:8081/artifactory/realsafe-maven-local</url>
+			<url>http://localhost:8081/artifactory/realsafe-maven-local/${environment}</url>
 		</snapshotRepository>
 	</distributionManagement>
 	
